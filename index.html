@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinted AI Describer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #fcfcfc;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            color: #1a1a1a;
+        }
+        .glass-effect {
+            background: #ffffff;
+            border: 1px solid #e5e7eb;
+        }
+        .loader {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #000;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-6 md:p-12">
+
+    <div class="max-w-xl w-full">
+        <!-- Header -->
+        <header class="text-center mb-12">
+            <h1 class="text-2xl font-light tracking-tight text-slate-900 mb-2 uppercase">Vinted AI Assistant</h1>
+            <p class="text-sm text-slate-400">Professionelle Artikelbeschreibungen per Bildanalyse</p>
+        </header>
+
+        <!-- Main Card -->
+        <div class="glass-effect rounded-lg p-8 shadow-sm space-y-8">
+            
+            <!-- Image Upload Area -->
+            <div id="dropZone" class="border border-dashed border-slate-200 rounded-md p-10 text-center hover:bg-slate-50 transition-all cursor-pointer group">
+                <input type="file" id="fileInput" class="hidden" accept="image/*">
+                <div id="previewContainer" class="hidden flex flex-col items-center">
+                    <img id="imagePreview" src="#" alt="Vorschau" class="max-h-72 rounded-sm mb-4 grayscale-[0.2]">
+                    <button id="removeImg" class="text-xs text-slate-400 hover:text-black transition-colors uppercase tracking-widest">Bild entfernen</button>
+                </div>
+                <div id="uploadPrompt" class="space-y-3">
+                    <p class="text-xs uppercase tracking-widest text-slate-500">Bild hochladen oder ablegen</p>
+                </div>
+            </div>
+
+            <!-- Inputs -->
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-[10px] uppercase tracking-widest text-slate-400 mb-2 font-semibold">Marke</label>
+                        <input type="text" id="brandInput" placeholder="z.B. Maison Margiela" class="w-full px-0 py-2 bg-transparent border-b border-slate-200 focus:border-black outline-none text-sm transition-colors">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] uppercase tracking-widest text-slate-400 mb-2 font-semibold">Größe</label>
+                        <input type="text" id="sizeInput" placeholder="z.B. 38 / M" class="w-full px-0 py-2 bg-transparent border-b border-slate-200 focus:border-black outline-none text-sm transition-colors">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Button -->
+            <button id="generateBtn" class="w-full bg-black text-white text-[10px] uppercase tracking-[0.2em] py-4 rounded-sm hover:bg-slate-800 transition-all active:scale-[0.98] flex justify-center items-center gap-3">
+                <span>Text generieren</span>
+                <div id="btnLoader" class="loader hidden"></div>
+            </button>
+        </div>
+
+        <!-- Result Section -->
+        <div id="resultSection" class="mt-12 hidden">
+            <h2 class="text-[10px] uppercase tracking-[0.2em] text-slate-400 mb-4 font-bold">Vorschlag</h2>
+            <div id="descriptionText" class="glass-effect p-8 rounded-md text-sm text-slate-600 whitespace-pre-wrap leading-relaxed shadow-sm border-t-2 border-black">
+                <!-- Content goes here -->
+            </div>
+            <button id="copyBtn" class="mt-4 text-[10px] uppercase tracking-widest text-slate-500 hover:text-black transition-colors">
+                In die Zwischenablage kopieren
+            </button>
+        </div>
+        
+        <div id="errorBox" class="mt-6 p-4 text-[10px] uppercase tracking-widest bg-red-50 text-red-500 rounded-sm hidden text-center"></div>
+    </div>
+
+    <script>
+        const apiKey = ""; 
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const previewContainer = document.getElementById('previewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const uploadPrompt = document.getElementById('uploadPrompt');
+        const removeImg = document.getElementById('removeImg');
+        const generateBtn = document.getElementById('generateBtn');
+        const btnLoader = document.getElementById('btnLoader');
+        const resultSection = document.getElementById('resultSection');
+        const descriptionText = document.getElementById('descriptionText');
+        const errorBox = document.getElementById('errorBox');
+
+        let base64Image = "";
+
+        dropZone.onclick = () => !base64Image && fileInput.click();
+        
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) handleFile(file);
+        };
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                base64Image = e.target.result.split(',')[1];
+                imagePreview.src = e.target.result;
+                uploadPrompt.classList.add('hidden');
+                previewContainer.classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        removeImg.onclick = (e) => {
+            e.stopPropagation();
+            base64Image = "";
+            fileInput.value = "";
+            uploadPrompt.classList.remove('hidden');
+            previewContainer.classList.add('hidden');
+        };
+
+        async function generateDescription(prompt, image) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const payload = {
+                contents: [{
+                    parts: [
+                        { text: prompt },
+                        { inlineData: { mimeType: "image/png", data: image } }
+                    ]
+                }],
+                tools: [{ "google_search": {} }]
+            };
+
+            for (let i = 0; i < 5; i++) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error('API Error');
+                    const data = await response.json();
+                    return data.candidates?.[0]?.content?.parts?.[0]?.text;
+                } catch (err) {
+                    if (i === 4) throw err;
+                    await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+                }
+            }
+        }
+
+        generateBtn.onclick = async () => {
+            if (!base64Image) {
+                showError("Bitte wählen Sie zuerst ein Bild aus.");
+                return;
+            }
+
+            errorBox.classList.add('hidden');
+            generateBtn.disabled = true;
+            btnLoader.classList.remove('hidden');
+
+            const brand = document.getElementById('brandInput').value;
+            const size = document.getElementById('sizeInput').value;
+            
+            const prompt = `Erstelle eine kurze, stichpunktartige Vinted Artikelbeschreibung für dieses Kleidungsstück.
+            Details: Marke ${brand || 'nicht angegeben'}, Größe ${size || 'nicht angegeben'}.
+            Suche im Internet nach Stilmerkmalen dieser Marke.
+            Verwende KEINE Emojis. Das Design soll minimalistisch und informativ sein.
+            Inhalt:
+            - Zustand (standardmäßig "sehr gut")
+            - Stil/Schnitt
+            - Besonderheiten
+            - Material (falls erkennbar)
+            - Versandhinweis (Privatverkauf, keine Rücknahme)
+            Nur die Stichpunkte ausgeben.`;
+
+            try {
+                const text = await generateDescription(prompt, base64Image);
+                descriptionText.innerText = text || "Es konnte kein Text generiert werden.";
+                resultSection.classList.remove('hidden');
+                resultSection.scrollIntoView({ behavior: 'smooth' });
+            } catch (err) {
+                showError("Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.");
+            } finally {
+                generateBtn.disabled = false;
+                btnLoader.classList.add('hidden');
+            }
+        };
+
+        function showError(msg) {
+            errorBox.innerText = msg;
+            errorBox.classList.remove('hidden');
+        }
+
+        document.getElementById('copyBtn').onclick = () => {
+            const text = descriptionText.innerText;
+            const tempInput = document.createElement("textarea");
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand("copy");
+            document.body.removeChild(tempInput);
+            
+            const btn = document.getElementById('copyBtn');
+            btn.innerText = "Kopiert";
+            setTimeout(() => btn.innerText = "In die Zwischenablage kopieren", 2000);
+        };
+    </script>
+</body>
+</html>
